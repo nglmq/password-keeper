@@ -21,14 +21,10 @@ func main() {
 
 	appl.GRPCServer.Run()
 
-	//init app
-
-	// start grpc Server
-
-	// graceful shutdown
-
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
-	appl.GRPCServer.Stop() 
+	<-stop
+
+	appl.GRPCServer.Stop()
 }
