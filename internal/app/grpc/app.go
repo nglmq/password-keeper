@@ -17,10 +17,10 @@ type App struct {
 }
 
 // New create new gRPC server
-func New(log *slog.Logger, port int) *App {
+func New(log *slog.Logger, authService authgrpc.Auth, port int) *App {
 	gRPCServer := grpc.NewServer()
 
-	authgrpc.Register(gRPCServer)
+	authgrpc.Register(gRPCServer, authService)
 
 	return &App{
 		log:        log,
@@ -42,7 +42,7 @@ func (a *App) Run() error {
 		return fmt.Errorf("error serve: %w", err)
 	}
 
-	return nil 
+	return nil
 }
 
 // Stop stops gRPC server
