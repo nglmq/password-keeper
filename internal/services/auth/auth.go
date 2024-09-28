@@ -19,16 +19,30 @@ type Auth struct {
 	userGetter Getter
 }
 
+type Data struct {
+	log        *slog.Logger
+	dataSaver  DataSaver
+	dataGetter DataGetter
+}
+
 type Saver interface {
-	SaveUser(ctx context.Context, email string, passHash []byte) (uid int64, err error)
+	SaveUser(ctx context.Context, email string, passHash []byte) (models.User, error)
 }
 
 type Getter interface {
 	User(ctx context.Context, email string) (models.User, error)
 }
 
-// New returns a new instanse of Auth service
-func New(log *slog.Logger, userSaver Saver, userGetter Getter) *Auth {
+type DataSaver interface {
+	SaveData(ctx context.Context, userID int64, dataType, data string) error
+}
+
+type DataGetter interface {
+	GetData(ctx context.Context, userID int64) ([]models.Data, error)
+}
+
+// NewAuth returns a new instanse of Auth service
+func NewAuth(log *slog.Logger, userSaver Saver, userGetter Getter) *Auth {
 	return &Auth{
 		log:        log,
 		userSaver:  userSaver,
@@ -36,8 +50,17 @@ func New(log *slog.Logger, userSaver Saver, userGetter Getter) *Auth {
 	}
 }
 
+func NewData(log *slog.Logger, dataSaver DataSaver, dataGetter DataGetter) *Data {
+	return &Data{
+		log:        log,
+		dataSaver:  dataSaver,
+		dataGetter: dataGetter,
+	}
+}
+
 var (
 	ErrInvalidCredentials = errors.New("wrong login or password")
+	ErrUserAlreadyExists  = errors.New("user already exists")
 )
 
 // Login check credentials and if user exists
@@ -54,7 +77,7 @@ func (a *Auth) Login(ctx context.Context, email string, password string) (string
 		if errors.Is(err, storage.ErrUserNotFound) {
 			log.Error("user not found", err)
 
-			return "", fmt.Errorf("%w", ErrInvalidCredentials)
+			return "", ErrInvalidCredentials
 		}
 
 		log.Error("failed to get user", err)
@@ -78,8 +101,8 @@ func (a *Auth) Login(ctx context.Context, email string, password string) (string
 	return token, nil
 }
 
-// Register register new user and returns user ID
-func (a *Auth) Register(ctx context.Context, email string, password string) (int64, error) {
+// RegisterNewUser register new user and returns user ID
+func (a *Auth) RegisterNewUser(ctx context.Context, email string, password string) (string, error) {
 	log := a.log.With(
 		slog.String("method", "RegisterNewUser"),
 		slog.String("email", email),
@@ -91,20 +114,77 @@ func (a *Auth) Register(ctx context.Context, email string, password string) (int
 	if err != nil {
 		log.Error("failed to hash password", err)
 
-		return 0, fmt.Errorf("failed to hash password: %w", err)
+		return "", fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	id, err := a.userSaver.SaveUser(ctx, email, passHash)
+	user, err := a.userSaver.SaveUser(ctx, email, passHash)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserExists) {
 			log.Error("user already exists", err)
 
-			return 0, fmt.Errorf("user already exists: %w", storage.ErrUserExists)
+			return "", ErrUserAlreadyExists
 		}
 		log.Error("failed to save user", err)
 
-		return 0, fmt.Errorf("failed to save user: %w", err)
+		return "", fmt.Errorf("failed to save user: %w", err)
 	}
 
-	return id, nil
+	token, err := jwt.NewToken(user, 3*time.Hour)
+	if err != nil {
+		a.log.Error("failed to generate token", err)
+
+		return "", fmt.Errorf("%w", err)
+	}
+
+	return token, nil
+}
+
+func (d *Data) SaveData(ctx context.Context, token, dataType, data string) (string, error) {
+	log := d.log.With(
+		slog.String("method", "SaveData"),
+		slog.String("dataType", dataType),
+	)
+
+	userID, err := jwt.ValidateToken(token)
+	if err != nil {
+		log.Error("failed to validate token", err)
+
+		return "", fmt.Errorf("failed to validate token: %w", err)
+	}
+
+	log.Info("saving data")
+
+	err = d.dataSaver.SaveData(ctx, userID, dataType, data)
+	if err != nil {
+		log.Error("failed to save data", err)
+
+		return "", fmt.Errorf("failed to save data: %w", err)
+	}
+
+	return token, nil
+}
+
+func (d *Data) GetData(ctx context.Context, token string) (string, []models.Data, error) {
+	log := d.log.With(
+		slog.String("method", "GetData"),
+		slog.String("token", token),
+	)
+
+	userID, err := jwt.ValidateToken(token)
+	if err != nil {
+		log.Error("failed to validate token", err)
+
+		return "", []models.Data{}, fmt.Errorf("failed to validate token: %w", err)
+	}
+
+	log.Info("getting data")
+
+	data, err := d.dataGetter.GetData(ctx, userID)
+	if err != nil {
+		log.Error("failed to get data", err)
+
+		return token, []models.Data{}, storage.ErrDataNotFound
+	}
+
+	return token, data, nil
 }

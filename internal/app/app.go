@@ -9,7 +9,9 @@ import (
 )
 
 type App struct {
-	GRPCServer *grpcapp.App
+	GRPCServer  *grpcapp.App
+	AuthService *auth.Auth
+	DataService *auth.Data
 }
 
 func New(log *slog.Logger, db string, port int) *App {
@@ -18,11 +20,14 @@ func New(log *slog.Logger, db string, port int) *App {
 		log.Error("failed to create storage", err)
 	}
 
-	authService := auth.New(log, storage, storage)
+	authService := auth.NewAuth(log, storage, storage)
+	dataService := auth.NewData(log, storage, storage)
 
-	grpcApp := grpcapp.New(log, authService, port)
+	grpcApp := grpcapp.New(log, authService, dataService, port)
 
 	return &App{
-		GRPCServer: grpcApp,
+		GRPCServer:  grpcApp,
+		AuthService: authService,
+		DataService: dataService,
 	}
 }

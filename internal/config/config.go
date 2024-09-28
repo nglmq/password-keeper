@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
 
 	"log"
@@ -41,6 +42,7 @@ func parseConfigPath() string {
 
 	flag.StringVar(&res, "config", "", "path to config file")
 	flag.Parse()
+	fmt.Println(res)
 
 	return res
 }
