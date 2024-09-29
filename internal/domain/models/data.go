@@ -1,6 +1,7 @@
 package models
 
+// Data - структура для хранения данных
 type Data struct {
-	DataType string //`json:"data_type"` // Тип данных (например, текст, пароль, карта и т.д.)
-	Content  string //`json:"content"`   // Основное содержимое данных
+	DataType string // Тип данных (например, текст, пароль, карта и т.д.)
+	Content  string // Основное содержимое данных
 }

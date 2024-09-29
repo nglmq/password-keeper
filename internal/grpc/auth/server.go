@@ -1,3 +1,5 @@
+// Description: This file contains the implementation of the gRPC server for the authentication and data service.
+
 package authgrpc
 
 import (
@@ -28,11 +30,13 @@ type serverAPI struct {
 	data Data
 }
 
+// Register registers the gRPC server
 func Register(gRPC *grpc.Server, auth Auth, data Data) {
 	sso.RegisterAuthServer(gRPC, &serverAPI{auth: auth})
 	sso.RegisterUserDataServer(gRPC, &serverAPI{data: data})
 }
 
+// Login logs in a user
 func (s *serverAPI) Login(ctx context.Context, req *sso.LoginRequest) (*sso.LoginResponse, error) {
 	if req.GetEmail() == "" {
 		return nil, status.Error(codes.InvalidArgument, "email should not be empty")
@@ -56,6 +60,7 @@ func (s *serverAPI) Login(ctx context.Context, req *sso.LoginRequest) (*sso.Logi
 	}, nil
 }
 
+// Register registers a new user
 func (s *serverAPI) Register(ctx context.Context, req *sso.RegisterRequest) (*sso.RegisterResponse, error) {
 	if req.GetEmail() == "" {
 		return nil, status.Error(codes.InvalidArgument, "email should not be empty")
@@ -79,6 +84,7 @@ func (s *serverAPI) Register(ctx context.Context, req *sso.RegisterRequest) (*ss
 	}, nil
 }
 
+// SaveData saves user data
 func (s *serverAPI) SaveData(ctx context.Context, req *sso.SaveDataRequest) (*sso.SaveDataResponse, error) {
 	if req.GetToken() == "" {
 		return nil, status.Error(codes.InvalidArgument, "token should not be empty")
@@ -93,10 +99,6 @@ func (s *serverAPI) SaveData(ctx context.Context, req *sso.SaveDataRequest) (*ss
 
 	token, err := s.data.SaveData(ctx, req.GetToken(), req.GetDataType(), req.GetData())
 	if err != nil {
-		//if errors.Is(err, storage.ErrUserExists) {
-		//	return nil, status.Error(codes.AlreadyExists, "user already exists")
-		//}
-
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 
@@ -105,6 +107,7 @@ func (s *serverAPI) SaveData(ctx context.Context, req *sso.SaveDataRequest) (*ss
 	}, nil
 }
 
+// GetData gets user data
 func (s *serverAPI) GetData(ctx context.Context, req *sso.GetDataRequest) (*sso.GetDataResponse, error) {
 	if req.GetToken() == "" {
 		return nil, status.Error(codes.InvalidArgument, "token should not be empty")
@@ -112,10 +115,6 @@ func (s *serverAPI) GetData(ctx context.Context, req *sso.GetDataRequest) (*sso.
 
 	token, data, err := s.data.GetData(ctx, req.GetToken())
 	if err != nil {
-		//if errors.Is(err, storage.ErrUserExists) {
-		//	return nil, status.Error(codes.AlreadyExists, "user already exists")
-		//}
-
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 

@@ -182,8 +182,11 @@ func (d *Data) GetData(ctx context.Context, token string) (string, []models.Data
 	data, err := d.dataGetter.GetData(ctx, userID)
 	if err != nil {
 		log.Error("failed to get data", err)
+		if errors.Is(err, storage.ErrDataNotFound) {
+			return token, []models.Data{}, nil
+		}
 
-		return token, []models.Data{}, storage.ErrDataNotFound
+		return token, []models.Data{}, err
 	}
 
 	return token, data, nil

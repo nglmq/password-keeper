@@ -6,8 +6,10 @@ import (
 	"time"
 )
 
+// superSecret is the secret key used to sign the JWT token
 const superSecret = "superSecret"
 
+// NewToken creates a new JWT token for the given user
 func NewToken(user models.User, duration time.Duration) (string, error) {
 	token := jwt.New(jwt.SigningMethodHS256)
 
@@ -24,6 +26,7 @@ func NewToken(user models.User, duration time.Duration) (string, error) {
 	return tokenString, nil
 }
 
+// ValidateToken validates the given JWT token and returns the user ID
 func ValidateToken(tokenString string) (int64, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		return []byte(superSecret), nil

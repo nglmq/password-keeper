@@ -1,3 +1,5 @@
+// This file contains the implementation of the SSO client using gRPC.
+
 package api
 
 import (
@@ -10,12 +12,14 @@ import (
 	"log/slog"
 )
 
+// Client is a client for the SSO service
 type Client struct {
 	apiAuth sso.AuthClient
 	apiData sso.UserDataClient
 	log     *slog.Logger
 }
 
+// New creates a new SSO client
 func New(log *slog.Logger, addr string) (*Client, error) {
 	conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -34,6 +38,7 @@ func New(log *slog.Logger, addr string) (*Client, error) {
 	}, nil
 }
 
+// Register registers a new user
 func (c *Client) Register(ctx context.Context, email, password string) (string, error) {
 	resp, err := c.apiAuth.Register(ctx, &sso.RegisterRequest{
 		Email:    email,
@@ -46,6 +51,7 @@ func (c *Client) Register(ctx context.Context, email, password string) (string, 
 	return resp.Token, nil
 }
 
+// Login logs in a user
 func (c *Client) Login(ctx context.Context, email, password string) (string, error) {
 	resp, err := c.apiAuth.Login(ctx, &sso.LoginRequest{
 		Email:    email,
@@ -58,6 +64,7 @@ func (c *Client) Login(ctx context.Context, email, password string) (string, err
 	return resp.Token, nil
 }
 
+// GetUserData gets user data
 func (c *Client) GetUserData(ctx context.Context, token string) ([]models.Data, error) {
 	resp, err := c.apiData.GetData(ctx, &sso.GetDataRequest{
 		Token: token,
@@ -77,6 +84,7 @@ func (c *Client) GetUserData(ctx context.Context, token string) ([]models.Data, 
 	return dataModel, nil
 }
 
+// SaveUserData saves user data
 func (c *Client) SaveUserData(ctx context.Context, token, dataType, data string) error {
 	_, err := c.apiData.SaveData(ctx, &sso.SaveDataRequest{
 		Token:    token,

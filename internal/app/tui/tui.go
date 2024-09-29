@@ -1,3 +1,5 @@
+// Terminal User Interface (TUI) for the application.
+
 package tui
 
 import (
@@ -9,7 +11,6 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 	api "github.com/nglmq/password-keeper/internal/clients/sso"
 	"github.com/nglmq/password-keeper/internal/domain/models"
-	"github.com/nglmq/password-keeper/internal/storage"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"os"
@@ -17,10 +18,28 @@ import (
 
 type Choice int
 
+type SecondChoice int
+
 const (
 	Login Choice = iota + 1
 	Register
 )
+
+const (
+	SaveData SecondChoice = iota + 1
+	SyncData
+)
+
+func (c SecondChoice) String() string {
+	switch c {
+	case SaveData:
+		return "SaveData"
+	case SyncData:
+		return "SyncData"
+	default:
+		return ""
+	}
+}
 
 func (c Choice) String() string {
 	switch c {
@@ -34,86 +53,189 @@ func (c Choice) String() string {
 }
 
 type User struct {
-	Choice   Choice
-	Continue bool
-	Email    string
-	Password string
+	SecondChoice SecondChoice
+	Choice       Choice
+	Continue     bool
+	Email        string
+	Password     string
 }
 
 func StartCLI(api *api.Client) {
 	var user User
-	//
-	//form := huh.NewForm(
-	//	huh.NewGroup(huh.NewNote().
-	//		Title("GophKeeper").
-	//		Description("Welcome to _GophKeeper™_.\n\n\n").
-	//		Next(true).
-	//		NextLabel("Next"),
-	//	),
-	//
-	//	huh.NewGroup(
-	//		huh.NewSelect[Choice]().
-	//			Title("Choose option").
-	//			Options(
-	//				huh.NewOption("Login", Login),
-	//				huh.NewOption("Register", Register)).
-	//			Value(&user.Choice),
-	//	),
-	//
-	//	huh.NewGroup(
-	//		huh.NewInput().
-	//			Value(&user.Email).
-	//			Title("Enter your email").
-	//			Placeholder("user@mail.ru").
-	//			Validate(func(s string) error {
-	//				if s == "" {
-	//					return errors.New("email is required")
-	//				}
-	//				return nil
-	//			}),
-	//
-	//		huh.NewInput().
-	//			Value(&user.Password).
-	//			Placeholder("Password").
-	//			Title("Enter password").
-	//			EchoMode(huh.EchoModePassword).
-	//			Validate(func(s string) error {
-	//				if s == "" {
-	//					return errors.New("password is required")
-	//				}
-	//				return nil
-	//			}),
-	//
-	//		huh.NewConfirm().
-	//			Title("Continue?").
-	//			Value(&user.Continue).
-	//			Affirmative("Yes!").
-	//			Negative("No."),
-	//	),
-	//)
+	var newData models.Data
+	var resp string
 
-	form := renderForm(&user)
-	err := form.Run()
-
-	if err != nil {
-		fmt.Println("Uh oh:", err)
-		os.Exit(1)
-	}
-
-	resp, err := sendData(api, user.Choice, user.Email, user.Password)
-	if err != nil {
-		fmt.Println("\n\n\nTry again\n\n\n")
-		StartCLI(api)
-		return
-	}
-
-	data, err := api.GetUserData(context.Background(), resp)
-	if err != nil {
-		if errors.Is(err, storage.ErrDataNotFound) {
-			printErrorTable(err)
-			return
+	for {
+		form := renderForm(&user)
+		err := form.Run()
+		if err != nil {
+			fmt.Println("Ошибка при вводе данных:", err)
+			continue
 		}
-		fmt.Println("Ошибка при получении данных:", err)
+
+		resp, err = sendData(api, user.Choice, user.Email, user.Password)
+		if err != nil {
+			fmt.Println("\n\n\nПопробуйте снова\n\n\n")
+			continue
+		}
+
+		break
+	}
+
+	for {
+		data, err := api.GetUserData(context.Background(), resp)
+		if err != nil {
+			st, ok := status.FromError(err)
+
+			if ok {
+				switch st.Code() {
+				case codes.InvalidArgument:
+					err = fmt.Errorf("not authorized")
+					printErrorTable(err)
+					continue
+
+				case codes.Internal:
+					err = fmt.Errorf("internal error")
+					printErrorTable(err)
+					continue
+
+				default:
+					fmt.Println("Ошибка при входе:", st.Message())
+					printErrorTable(err)
+					continue
+				}
+			}
+			printErrorTable(err)
+
+			continue
+		}
+		if err := printDataTable(data); err != nil {
+			fmt.Println("Ошибка при выводе данных:", err)
+			continue
+		}
+
+		formToSaveData := renderFormToSaveData(&user, &newData)
+		err = formToSaveData.Run()
+		if err != nil {
+			fmt.Println("Uh oh:", err, "\n\n\n")
+			continue
+		}
+
+		switch user.SecondChoice {
+		case SaveData:
+			// Сохраняем новые данные
+			err := saveNewData(api, resp, &newData)
+			if err != nil {
+				fmt.Println("Uh oh:", err)
+				continue
+			}
+		}
+
+		fmt.Println("Хотите продолжить? (yes/no)")
+		var answer string
+		fmt.Scanln(&answer)
+
+		if answer != "yes" {
+			fmt.Println("Завершение работы приложения.")
+			break
+		}
+	}
+}
+
+func renderFormToSaveData(user *User, data *models.Data) *huh.Form {
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[SecondChoice]().
+				Title("Choose option").
+				Options(
+					huh.NewOption("Add new note", SaveData)).
+				//huh.NewOption("Sync data", SyncData)).
+				Value(&user.SecondChoice),
+		),
+		huh.NewGroup(
+			huh.NewInput().
+				Value(&data.DataType).
+				Title("Enter data type").
+				Placeholder("Password, login, card, etc.").
+				Validate(func(s string) error {
+					if s == "" {
+						return errors.New("data type is required")
+					}
+					return nil
+				}),
+			huh.NewInput().
+				Value(&data.Content).
+				Title("Enter data").
+				Placeholder("Data").
+				Validate(func(s string) error {
+					if s == "" {
+						return errors.New("data is required")
+					}
+					return nil
+				})),
+	)
+
+	return form
+}
+
+func saveNewData(api *api.Client, token string, data *models.Data) error {
+	err := api.SaveUserData(context.Background(), token, data.DataType, data.Content)
+	if err != nil {
+		st, ok := status.FromError(err)
+
+		if ok {
+			switch st.Code() {
+			case codes.InvalidArgument:
+				err = fmt.Errorf("not authorized")
+				printErrorTable(err)
+				return err
+
+			case codes.Internal:
+				err = fmt.Errorf("internal error")
+				printErrorTable(err)
+				return err
+
+			default:
+				fmt.Println("Ошибка при входе:", st.Message())
+				printErrorTable(err)
+				return err
+			}
+		}
+		printErrorTable(err)
+
+		return err
+	}
+
+	syncData(api, token)
+
+	return nil
+}
+
+func syncData(api *api.Client, token string) {
+	data, err := api.GetUserData(context.Background(), token)
+	if err != nil {
+		st, ok := status.FromError(err)
+
+		if ok {
+			switch st.Code() {
+			case codes.InvalidArgument:
+				err = fmt.Errorf("not authorized")
+				printErrorTable(err)
+				return
+
+			case codes.Internal:
+				err = fmt.Errorf("internal error")
+				printErrorTable(err)
+				return
+
+			default:
+				fmt.Println("Ошибка при входе:", st.Message())
+				printErrorTable(err)
+				return
+			}
+		}
+		printErrorTable(err)
+
 		return
 	}
 
@@ -122,6 +244,7 @@ func StartCLI(api *api.Client) {
 		return
 	}
 
+	return
 }
 
 func renderForm(user *User) *huh.Form {

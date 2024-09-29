@@ -47,11 +47,6 @@ func New(storagePath string) (*Storage, error) {
 }
 
 func (s *Storage) SaveUser(ctx context.Context, email string, passHash []byte) (models.User, error) {
-	//stmt, err := s.db.Prepare("INSERT INTO users(email, passHash) VALUES ($1, $2) RETURNING id")
-	//if err != nil {
-	//	return 0, fmt.Errorf("failed to prepare statement: %w", err)
-	//}
-
 	stmt, err := s.db.Prepare("INSERT INTO users(email, passHash) VALUES ($1, $2)")
 	if err != nil {
 		return models.User{}, fmt.Errorf("failed to prepare statement: %w", err)
@@ -109,8 +104,7 @@ func (s *Storage) SaveData(ctx context.Context, userID int64, dataType string, d
 		return fmt.Errorf("failed to marshal data: %w", err)
 	}
 
-	var id int64
-	err = stmt.QueryRowContext(ctx, userID, dataType, dataJSON).Scan(&id)
+	_, err = stmt.ExecContext(ctx, userID, dataType, dataJSON)
 	if err != nil {
 		return fmt.Errorf("failed to execute statement: %w", err)
 	}
