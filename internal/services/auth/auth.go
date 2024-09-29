@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/nglmq/password-keeper/internal/lib/crypt"
 	"github.com/nglmq/password-keeper/internal/lib/jwt"
 	"log/slog"
 	"time"
@@ -152,9 +153,18 @@ func (d *Data) SaveData(ctx context.Context, token, dataType, data string) (stri
 		return "", fmt.Errorf("failed to validate token: %w", err)
 	}
 
+	cr, err := crypt.NewCrypt()
+	if err != nil {
+		log.Error("failed to create crypt", err)
+		return "", fmt.Errorf("failed to create crypt: %w", err)
+	}
+
+	// Шифруем данные перед сохранением
+	encryptedData := cr.Encode(data)
+
 	log.Info("saving data")
 
-	err = d.dataSaver.SaveData(ctx, userID, dataType, data)
+	err = d.dataSaver.SaveData(ctx, userID, dataType, encryptedData)
 	if err != nil {
 		log.Error("failed to save data", err)
 
@@ -187,6 +197,20 @@ func (d *Data) GetData(ctx context.Context, token string) (string, []models.Data
 		}
 
 		return token, []models.Data{}, err
+	}
+
+	cr, err := crypt.NewCrypt()
+	if err != nil {
+		log.Error("failed to create crypt", err)
+		return token, []models.Data{}, fmt.Errorf("failed to create crypt: %w", err)
+	}
+
+	for i := range data {
+		data[i].Content, err = cr.Decode(data[i].Content)
+		if err != nil {
+			log.Error("failed to decode data", err)
+			return token, []models.Data{}, fmt.Errorf("failed to decode data: %w", err)
+		}
 	}
 
 	return token, data, nil

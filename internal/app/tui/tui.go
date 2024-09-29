@@ -14,6 +14,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 type Choice int
@@ -64,6 +66,15 @@ func StartCLI(api *api.Client) {
 	var user User
 	var newData models.Data
 	var resp string
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		fmt.Println("\nЗавершение...")
+		os.Exit(0)
+	}()
 
 	for {
 		form := renderForm(&user)
